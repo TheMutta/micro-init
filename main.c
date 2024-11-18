@@ -16,7 +16,7 @@
 #define SOCKET_PATH "/tmp/init.sock" 
 
 pid_t create_thread(int (*func)(void*), void *arg) {
-	return clone(func, malloc(STACK_SIZE) + STACK_SIZE, CLONE_VM, arg);
+	return clone(func, malloc(STACK_SIZE) + STACK_SIZE, CLONE_VM | SIGCHLD, arg);
 }
 
 void emergency_shell() {
@@ -31,20 +31,8 @@ void emergency_shell() {
 	}
 }
 
-int socket_handler(void *sockfd) {
-	for (;;) {
-		int acceptfd = accept((int)sockfd, NULL, NULL);
-		assert(acceptfd != -1);
-
-
-		close(acceptfd);
-	}
-
-	return EXIT_SUCCESS;
-}
-
-void setup_socket() {
-	int sockfd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+int socket_handler() {
+	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
 
 	struct sockaddr_un sock;
 	sock.sun_family = AF_UNIX;
@@ -54,9 +42,17 @@ void setup_socket() {
 	assert(bind(sockfd, (struct sockaddr*)&sock, sizeof(sock)) != -1);
 
 	listen(sockfd, 100);
+	for (;;) {
+		int acceptfd = accept(sockfd, NULL, NULL);
+		assert(acceptfd != -1);
 
-	create_thread(socket_handler, (void*)sockfd);
+
+		close(acceptfd);
+	}
+
+	return EXIT_SUCCESS;
 }
+
 
 int init() {
 	printf("Hello from child\n");
@@ -74,7 +70,7 @@ int init() {
         const char *new_hostname = "localhost";
         sethostname(new_hostname, strlen(new_hostname));
 
-	setup_socket();
+	create_thread(socket_handler, NULL);
 
 	emergency_shell();
 
